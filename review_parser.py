@@ -1,5 +1,4 @@
 import data # local dir w/ review data
-import data.map # local dir w/ map data
 
 import os
 import datetime as dt
@@ -10,7 +9,7 @@ try:
     import importlib.resources as pkg_resources
 except ImportError:
     # Older versions of python (< 3.7)
-    import importlib_resources as pkg_resources
+    import importlib_resources as pkg_resources # type: ignore
 
 
 class Review(BaseModel):
@@ -20,7 +19,7 @@ class Review(BaseModel):
         ge=0,
         le=5,
     )
-    date: str = Field(
+    date: float = Field(
         title='Date',
         description='the date of publication',
     )
@@ -60,7 +59,7 @@ class Review(BaseModel):
     @validator("date", pre=True)
     def parse_date(cls, value):
         def __parse(strp_str: str):
-            return dt.datetime.strptime(value, strp_str).strftime('%m-%d-%Y')
+            return dt.datetime(*list(map(int, dt.datetime.strptime(value, strp_str).strftime('%Y-%m-%d').split("-")))).timestamp()
         try:
             return  __parse('%B %d, %Y')
         except ValueError:

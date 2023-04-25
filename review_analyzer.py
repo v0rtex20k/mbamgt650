@@ -1,16 +1,12 @@
 import review_parser
-import geopandas as gpd
-from typing import Tuple
+import numpy as np
 from shapely import Point
-from functools import cache
 import matplotlib.pyplot as plt
-from geopy import Nominatim, Location
+from collections import defaultdict
+import seaborn as sns
+import datetime as dt
 
-GEO = Nominatim(user_agent="mbamgt650")
-SCALE = 10**4
-
-@cache
-def get_lat_lon(loc_str: str)-> Point:
+def sanitize(loc_str: str)-> str:
     if loc_str is not None:
         loc_str = loc_str\
             .lower()\
@@ -26,52 +22,85 @@ def get_lat_lon(loc_str: str)-> Point:
                 loc_str.replace("MA", ", MA")
             loc_str += ", MA"
 
-        global GEO
-        try: # 235818, 900566
-             # -71.061 42.355
-            loc: Location = GEO.geocode(loc_str, country_codes=["US"], exactly_one=True)
-            if -73.508142 <= loc.longitude <= -69.928393\
-            and 41.237964 <= loc.latitude <= 42.886589:
-                return Point(int((round(loc.longitude, 1) * 10**4) + (0.94643 * (10**6))),
-                             int((round(loc.latitude, 1)  * 10**4) + (4.77020 * (10**5))))
-        except:
-            print(f"Could not find location: \"{loc_str}\"")
 
+        return loc_str.replace(', MA', '').capitalize()
+
+def rescale(z):
+    return (z - (m := np.min(z))) / (np.max(z) - m)
 
 def score_vs_location(reviews):
-    scores, geo_points = [], []
+    data = defaultdict(list)
+    
     for r in reviews:
-        if r.origin == "indeed" and r.location is not None:
-            if (p := get_lat_lon(r.location)) is not None:
-                scores.append(r.score)
-                geo_points.append(p)
+        if r.origin == "indeed" and (p := sanitize(r.location)) is not None:
+            data[p].append(r.score)
 
-    map_path = review_parser.load_map()
-    print(map_path)
-    map = gpd.read_file(map_path)
+    data = {city: np.round(np.array(scores).mean(), 2) for city, scores in data.items()}
+    
+    del data["Ma"]; del data["Newton corporate office, office of the coo"]
 
-    df = gpd.GeoDataFrame(scores, geometry=geo_points)
+    my_cmap = plt.get_cmap("RdYlGn") # type: ignore
 
+    plt.bar(list(data.keys()), (y := np.array(list(data.values()))), color=my_cmap(rescale(y)), width = 0.7)
+    plt.title("Indeed Reviews by Location")
+    plt.xticks(rotation=90, ha='right')
 
-    fig, ax = plt.subplots(figsize=(10,5))
-    df.plot(ax=ax, 
-            markersize=20, 
-            color='red', 
-            marker='o', 
-            label='Neg')
+    y_values = ["0 stars", "1 star", "2 stars", "3 stars", "4 stars", "5 stars"]
+    y_axis = np.arange(0, 6, 1)
+    plt.yticks(y_axis, y_values)
 
-    map.plot(ax=ax)
+    plt.subplots_adjust(bottom=0.3)
+
     plt.show()
+
+def score_vs_date(reviews):
+    indeed_data = defaultdict(list)
+    glassdoor_data = defaultdict(list)
+    
+    for r in reviews:
+        if r.origin == "indeed":
+            indeed_data[r.date].append(r.score)
+        if r.origin == "glassdoor":
+            glassdoor_data[r.date].append(r.score)
+
+    indeed_data = {date: np.round(np.array(scores).mean(), 2) for date, scores in sorted(indeed_data.items(), key=lambda item: item[0])}
+    glassdoor_data = {date: np.round(np.array(scores).mean(), 2) for date, scores in sorted(glassdoor_data.items(), key=lambda item: item[0])}
+
+    fig, axs = plt.subplots(2,2)
+
+    with sns.color_palette("RdYlGn"):
+        # plt.title("All Reviews by Date")
+        # plt.xticks(rotation=90, ha='right')
+        ix, iy = np.array(list(indeed_data.keys())), np.array(list(indeed_data.values()))
+        iz = np.divide(np.cumsum(iy), np.arange(1, len(iy)+1))
+
+        gx, gy = np.array(list(glassdoor_data.keys())), np.array(list(glassdoor_data.values()))
+        gz = np.divide(np.cumsum(gy), np.arange(1, len(gy)+1))
+
+        axs[0,0].set_title("Indeed Reviews vs Time")
+        axs[0,1].set_title("Glassdoor Reviews vs Time")
+        axs[0,0].plot(ix, iy, color="indigo")
+        axs[1,0].plot(ix, iz, color="gray")
+
+        axs[0,1].plot(gx, gy, color="green")
+        axs[1,1].plot(gx, gz, color="gray")
+        axs[1,0].set_yticks(np.arange(3, 6, 1), ["3 stars", "4 stars", "5 stars"])
+        axs[1,1].set_yticks(np.arange(1, 5, 1), ["1 star", "2 stars", "3 stars", "4 stars"])
+
+        for x in range(0,2):
+            for y in range(0,2):
+                axs[x,y].set_xticks([dt.datetime(2000+i, 1, 1).timestamp() for i in range(11,24)],
+                        [f"20{j}" for j in range(11,24)])
+            
+
+
+        plt.show()
 
 def main():
     all_reviews = review_parser.load_reviews()
-    score_vs_location(all_reviews)
+    # score_vs_location(all_reviews)
+    score_vs_date(all_reviews)
 
-
-def translate(x, y):
-    return int((x * 10**4) + (0.94643 * (10**6))), int((y * 10**4) + (4.7702 * (10**5)))
 
 if __name__ == "__main__":
-    # print(translate(-71.061, 42.355))
-    # print("(235818, 900566)")
     main()
