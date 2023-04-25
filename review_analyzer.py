@@ -35,9 +35,10 @@ def score_vs_location(reviews):
         if r.origin == "indeed" and (p := sanitize(r.location)) is not None:
             data[p].append(r.score)
 
-    data = {city: np.round(np.array(scores).mean(), 2) for city, scores in data.items()}
+    data = {city: np.round(np.array(scores).mean(), 2) for city, scores in sorted(data.items(), key=lambda item: item[0])}
     
-    del data["Ma"]; del data["Newton corporate office, office of the coo"]
+    for name in ["Ma", "Newton corporate office, office of the coo", "Multiple"]:
+        del data[name]
 
     my_cmap = plt.get_cmap("RdYlGn") # type: ignore
 
@@ -98,8 +99,8 @@ def score_vs_date(reviews):
 
 def main():
     all_reviews = review_parser.load_reviews()
-    # score_vs_location(all_reviews)
-    score_vs_date(all_reviews)
+    score_vs_location(all_reviews)
+    # score_vs_date(all_reviews)
 
 
 if __name__ == "__main__":
