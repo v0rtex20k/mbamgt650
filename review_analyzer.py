@@ -6,6 +6,8 @@ from collections import defaultdict
 import seaborn as sns
 import datetime as dt
 
+from transformers import pipeline
+
 def sanitize(loc_str: str)-> str:
     if loc_str is not None:
         loc_str = loc_str\
@@ -97,10 +99,37 @@ def score_vs_date(reviews):
 
         plt.show()
 
+def sentiment_analysis(reviews):
+    sentiment_pipeline = pipeline("sentiment-analysis", model="finiteautomata/bertweet-base-sentiment-analysis")
+    emotional_pipeline = pipeline(model="bhadresh-savani/distilbert-base-uncased-emotion")
+    data = []
+    for review in reviews:
+        content = review.content if review.content is not None else ""
+        pros = review.pros if review.pros is not None else ""
+        cons = review.cons if review.cons is not None else ""
+
+        if 0 < (t := len(content)) < 512:
+            data.append(content[:min(t, 512)])
+        if 0 < (p := len(content)) < 512:
+            data.append(pros[:min(p, 512)])
+        if 0 < (c := len(cons)) < 512:
+            data.append(pros[:min(c, 512)])
+
+    def __apply_pipelines(*pipelines):
+        __results = []
+        for pipeline in pipelines:
+            d = pipeline(data)
+            __results.extend(list(zip(data, [dd["label"] for dd in d])))
+        
+        return __results
+
+    return __apply_pipelines(sentiment_pipeline, emotional_pipeline)
+
 def main():
     all_reviews = review_parser.load_reviews()
-    score_vs_location(all_reviews)
+    # score_vs_location(all_reviews)
     # score_vs_date(all_reviews)
+    print(sentiment_analysis(all_reviews))
 
 
 if __name__ == "__main__":
