@@ -1,10 +1,10 @@
 import review_parser
 import numpy as np
-from shapely import Point
 import matplotlib.pyplot as plt
-from collections import defaultdict
+from collections import Counter, defaultdict
 import seaborn as sns
 import datetime as dt
+import matplotlib.gridspec as gridspec
 
 from transformers import pipeline
 
@@ -102,28 +102,82 @@ def score_vs_date(reviews):
 def sentiment_analysis(reviews):
     sentiment_pipeline = pipeline("sentiment-analysis", model="finiteautomata/bertweet-base-sentiment-analysis")
     emotional_pipeline = pipeline(model="bhadresh-savani/distilbert-base-uncased-emotion")
-    data = []
+    data, scores = [], []
+
     for review in reviews:
-        content = review.content if review.content is not None else ""
-        pros = review.pros if review.pros is not None else ""
-        cons = review.cons if review.cons is not None else ""
+        content = review.content if review.content is not None and len(review.content) > 0 else ""
+        pros = review.pros if review.pros is not None and len(review.pros) > 0 else ""
+        cons = review.cons if review.cons is not None and len(review.cons) > 0 else ""
 
         if 0 < (t := len(content)) < 512:
             data.append(content[:min(t, 512)])
-        if 0 < (p := len(content)) < 512:
+            scores.append(review.score)
+        if 0 < (p := len(pros)) < 512:
             data.append(pros[:min(p, 512)])
+            scores.append(review.score)
         if 0 < (c := len(cons)) < 512:
             data.append(pros[:min(c, 512)])
+            scores.append(review.score)
 
     def __apply_pipelines(*pipelines):
         __results = []
         for pipeline in pipelines:
             d = pipeline(data)
-            __results.extend(list(zip(data, [dd["label"] for dd in d])))
+            __results.append(set(zip(data, scores, [dd["label"] for dd in d])))
         
         return __results
 
-    return __apply_pipelines(sentiment_pipeline, emotional_pipeline)
+    results = __apply_pipelines(sentiment_pipeline, emotional_pipeline)
+
+    sentiment_label_counts = Counter([l for (c,s,l) in results[0]])
+    emotional_label_counts = Counter([l for (c,s,l) in results[1]])
+    score_counts = Counter([str(int(score)) for score in scores])
+
+    # Create 2x2 sub plots
+    gs = gridspec.GridSpec(nrows=2, ncols=2, hspace=0.75)
+    
+    plt.figure()
+
+    ax = plt.subplot(gs[0, 0]) # row 0, col 0
+    plt.bar(["NEG", "NEU", "POS"],
+            np.array([
+                sentiment_label_counts["NEG"],
+                sentiment_label_counts["NEU"],
+                sentiment_label_counts["POS"]
+            ]), color=['tomato', 'silver', 'yellowgreen'], width=0.75)
+    plt.title("Sentiment Counts")
+
+
+    ax = plt.subplot(gs[0, 1]) # row 0, col 1
+    plt.bar(["anger", "fear", "sadness", "surprise", "joy", "love"],
+            np.array([
+                emotional_label_counts["anger"],
+                emotional_label_counts["fear"],
+                emotional_label_counts["sadness"],
+                emotional_label_counts["surprise"],
+                emotional_label_counts["joy"],
+                emotional_label_counts["love"],
+            ]), color=['red', 'lime', "navy", "yellow", "goldenrod", "pink"], width=0.75)
+    plt.title("Emotional Counts")
+    plt.xticks(rotation=45, ha='right')
+
+    ax = plt.subplot(gs[1,:]) # row 1, both columns
+    plt.bar(["1 star", "2 stars", "3 stars", "4 stars", "5 stars"],
+            np.array([
+                score_counts["1"],
+                score_counts["2"],
+                score_counts["3"],
+                score_counts["4"],
+                score_counts["5"],
+            ]), color=['red', 'orange', "yellow", "green", "blue"], width=0.75)
+    plt.title("Score Counts")
+
+    # y_axis = np.arange(0, 6, 1)
+    # plt.yticks(y_axis, y_values)
+
+    # plt.subplots_adjust(bottom=0.5)
+
+    plt.show()
 
 def main():
     all_reviews = review_parser.load_reviews()
